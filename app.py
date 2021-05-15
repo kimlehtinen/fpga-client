@@ -6,7 +6,8 @@ import desktop
 import tkinter as tk
 
 # connnect to fpga server
-fpga_client.connect()
+if constants.IS_SERVER_IN_USE:
+    fpga_client.connect()
 
 # init desktop app
 desktop.init()

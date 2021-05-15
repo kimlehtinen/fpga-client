@@ -2,8 +2,9 @@
 
 import socket
 from time import sleep
-import desktop
 import constants
+import io
+from PIL import Image
 
 tcp_socket = socket.socket()
 
@@ -16,27 +17,55 @@ def connect():
 def close():
     tcp_socket.close()
 
-def send():
-    # tcp payload data sent to fpga server
-    data = bytes('Hello from python!', encoding='utf8')
-            
-    # send data to fpga server
-    tcp_socket.send(data)
+# example of sending whole image
+def send(img):
+    byte_arr = io.BytesIO()
+    img.save(byte_arr, format=img.format)
+    byte_arr = byte_arr.getvalue()
 
-    sleep(1)
-            
-    # recieve data from fpga server
-    # max data amount is 100 (bufsize)
-    fpga_server_response = tcp_socket.recv(100)
+    print("Amount of bytes to be sent:")
+    print(len(byte_arr))
+    total_len = len(byte_arr)
+    print("First byte to be sent:")
+    print(byte_arr[0])
+    print("Last byte to be sent:")
+    print(byte_arr[total_len-1])
+    
+    # send image to fpga server
+    tcp_socket.send(byte_arr) 
 
-    # stop if no response from fpga server
-    if not fpga_server_response:
-        print("No response from fpga server")
+    data_rec_len = 0
+    all_bytes = []
 
-    print("SERVER SENT: " + fpga_server_response.decode('utf8') )
+    # wait until complete image received
+    while data_rec_len != total_len:
+        fpga_server_response = tcp_socket.recv(total_len)
+        sleep(1)
 
-    # remove extra spaces from response
-    fpga_server_response = fpga_server_response.rstrip()
+        if not fpga_server_response:
+            print("No response from fpga server")
+            return img
+        r_len = len(fpga_server_response)
+        print(r_len)
+        data_rec_len = data_rec_len + r_len
 
-    # show response in desktop app
-    desktop.server_response_msg.set(fpga_server_response)
+        for img_byt in fpga_server_response:
+            all_bytes.append(img_byt)
+
+    print("First byte received:")
+    print(all_bytes[0])
+    print("Last byte received:")
+    print(all_bytes[total_len-1])
+
+    print("Amount of bytes received:")
+    print(len(all_bytes))
+
+    img_bytes_from_fpga = bytes(all_bytes)
+    byt_img = io.BytesIO(img_bytes_from_fpga)
+    img_result = Image.open(byt_img)
+    return img_result
+
+def divide_chunks(l, n):
+    # looping till length l
+    for i in range(0, len(l), n): 
+        yield l[i:i + n]
