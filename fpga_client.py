@@ -17,55 +17,97 @@ def connect():
 def close():
     tcp_socket.close()
 
-# example of sending whole image
-def send(img):
-    byte_arr = io.BytesIO()
-    img.save(byte_arr, format=img.format)
-    byte_arr = byte_arr.getvalue()
-
-    print("Amount of bytes to be sent:")
-    print(len(byte_arr))
-    total_len = len(byte_arr)
-    print("First byte to be sent:")
-    print(byte_arr[0])
-    print("Last byte to be sent:")
-    print(byte_arr[total_len-1])
+# Source: https://stackoverflow.com/questions/4801366/convert-rgb-values-to-integer/4801397
+def convert_pixel_to_rgb_int(pixel):
+    if len(pixel) < 3:
+        print("rgb pixel should have length 3")
+        return None
     
-    # send image to fpga server
-    tcp_socket.send(byte_arr) 
+    r = pixel[0]
+    g = pixel[1]
+    b = pixel[2]
+    
+    return ((r&0x0ff)<<16)|((g&0x0ff)<<8)|(b&0x0ff)
 
-    data_rec_len = 0
-    all_bytes = []
+# Source: https://stackoverflow.com/questions/4801366/convert-rgb-values-to-integer/4801397
+def convert_rgb_int_to_rgb_pixel(rgb_int):
+    red = (rgb_int>>16)&0x0ff
+    green = (rgb_int>>8) &0x0ff
+    blue = (rgb_int)    &0x0ff
 
-    # wait until complete image received
-    while data_rec_len != total_len:
-        fpga_server_response = tcp_socket.recv(total_len)
-        sleep(1)
+    return (red, green, blue)
 
-        if not fpga_server_response:
-            print("No response from fpga server")
-            return img
-        r_len = len(fpga_server_response)
-        print(r_len)
-        data_rec_len = data_rec_len + r_len
-
-        for img_byt in fpga_server_response:
-            all_bytes.append(img_byt)
-
-    print("First byte received:")
-    print(all_bytes[0])
-    print("Last byte received:")
-    print(all_bytes[total_len-1])
-
-    print("Amount of bytes received:")
-    print(len(all_bytes))
-
-    img_bytes_from_fpga = bytes(all_bytes)
-    byt_img = io.BytesIO(img_bytes_from_fpga)
-    img_result = Image.open(byt_img)
-    return img_result
-
+# divide array to chunks
 def divide_chunks(l, n):
     # looping till length l
     for i in range(0, len(l), n): 
         yield l[i:i + n]
+
+# sends image to fpga server
+def send(img):
+    # bytes
+    byte_arr = io.BytesIO()
+    img.save(byte_arr, format=img.format)
+    byte_arr = byte_arr.getvalue()
+
+    # pixel
+    pix = img.load()  
+    width, height = img.size
+
+    pixel_int_values = []
+    byt_arr = []
+    total_len = 0
+    foo = []
+    
+    for y in range(0, height):
+        for x in range(0, width):
+            pixel_rgb = pix[x,y]
+            foo.append(pix[x,y])
+            byt_val = convert_pixel_to_rgb_int(pixel_rgb)
+            byt = byt_val.to_bytes(3, 'little')
+            total_len = total_len + 3
+            for b in byt:
+                byt_arr.append(b)
+            pixel_int_values.append(byt_val)
+
+    print("TOTAL LEN:")
+    print(len(byt_arr))
+    # divides image to chunks of size specified below
+    chunk_size = 999
+    chunks = divide_chunks(byt_arr, chunk_size)
+    idx = 0
+    pix_arr = []
+    total_chunks = len(byt_arr) / chunk_size
+    for chunk in chunks:
+        chunk_bytes = bytes(chunk)
+        nu = idx + 1
+        # print chunk number to show progress
+        print("#: " + str(nu) + "/" + str(total_chunks))
+        
+        if constants.IS_SERVER_IN_USE:
+            tcp_socket.send(chunk_bytes)
+            fpga_server_response = tcp_socket.recv(len(chunk_bytes))
+            sleep(0.001)
+        
+            if not fpga_server_response:
+                print("No response from fpga server")
+                return
+            resp_chunks = divide_chunks(fpga_server_response, 3)
+
+            for r_chunk in resp_chunks:
+                byt_int = int.from_bytes(r_chunk, 'little')
+                byt_pix = convert_rgb_int_to_rgb_pixel(byt_int)
+                pix_arr.append(byt_pix)
+        idx = idx + 1
+
+    # checking in terminal that amount of pixels received equals to sent
+    print(len(pix_arr))
+    print(len(foo))
+
+    # create image from response data
+    im = Image.new('RGB', (width, height))
+    im.putdata(pix_arr)
+    im.save('image.bmp')
+    # return image back to ui, it will be shown on right hand side
+    return im
+
