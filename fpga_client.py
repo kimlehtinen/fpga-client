@@ -5,6 +5,7 @@ from time import sleep
 import constants
 import io
 from PIL import Image
+import math
 
 tcp_socket = socket.socket()
 
@@ -82,7 +83,7 @@ def send(img):
         chunk_bytes = bytes(chunk)
         nu = idx + 1
         # print chunk number to show progress
-        print("#: " + str(nu) + "/" + str(total_chunks))
+        print("#: " + str(nu) + "/" + str(int(math.ceil(total_chunks))))
         
         if constants.IS_SERVER_IN_USE:
             tcp_socket.send(chunk_bytes)
