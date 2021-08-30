@@ -98,14 +98,12 @@ def send(img):
     print("TOTAL LEN:")
     print(len(byt_arr))
     # divides image to chunks of size specified below
-    chunk_size = 400
+    chunk_size = 800
     chunks = divide_chunks(byt_arr, chunk_size)
     idx = 0
     pix_arr = []
     total_chunks = len(byt_arr) / chunk_size
-    chunks_sent = 0
     for chunk in chunks:
-        chunks_sent = chunks_sent + len(chunk)
         chunk_bytes = bytes(chunk)
         nu = idx + 1
         # print chunk number to show progress
@@ -113,24 +111,7 @@ def send(img):
         
         if constants.IS_SERVER_IN_USE:
             tcp_socket.send(chunk_bytes)
-
-            # when last chunks are sent, wait for complete image
-            if chunks_sent == total_len:
-                print("All chunks sent now")
-                rec_len = 0
-
-                # wait for complete image to return
-                while rec_len != total_len:
-                    print("Waiting for all data to be received")
-                    fpga_server_response = tcp_socket.recv(total_len)
-                    print("RECLEN:")
-                    print(len(fpga_server_response))
-                    rec_len = rec_len + len(fpga_server_response)
-            else:
-                fpga_server_response = tcp_socket.recv(1)
-                print("RECLEN PARTIAL:")
-                print(len(fpga_server_response))
-
+            fpga_server_response = tcp_socket.recv(len(chunk_bytes))
             sleep(0.001)
         
             if not fpga_server_response:
@@ -147,8 +128,6 @@ def send(img):
     # checking in terminal that amount of pixels received equals to sent
     print(len(pix_arr))
     print(len(foo))
-
-    return img
 
     # create image from response data
     im = Image.new('RGBA', (width, height))
